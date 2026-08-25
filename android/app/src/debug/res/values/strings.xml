@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="probe_service_description">Developer diagnostic. Dumps the foreground view tree so feed signatures can be re-derived after app updates.</string>
+</resources>

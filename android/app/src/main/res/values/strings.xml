@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Coast</string>
+    <string name="accessibility_service_label">Coast</string>
+    <string name="accessibility_service_description">Detects short-form video feeds and performs hands-free scrolling on your behalf. All processing happens on-device.</string>
+</resources>

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Auto-Scroller mark: three pills narrowing downward, forming an implied
+     descending arrow. Sits inside the 66dp adaptive-icon safe circle. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M34.00,33.00 L74.00,33.00 A5.00,5.00 0 0 1 74.00,43.00 L34.00,43.00 A5.00,5.00 0 0 1 34.00,33.00 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M41.50,49.00 L66.50,49.00 A5.00,5.00 0 0 1 66.50,59.00 L41.50,59.00 A5.00,5.00 0 0 1 41.50,49.00 Z" />
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M49.00,65.00 L59.00,65.00 A5.00,5.00 0 0 1 59.00,75.00 L49.00,75.00 A5.00,5.00 0 0 1 49.00,65.00 Z" />
+</vector>
