@@ -180,6 +180,11 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
   List<AppEntry> _apps = const [];
   Timer? _poll;
 
+  /// The user said no to the accessibility disclosure. Not persisted: the
+  /// question may be asked again next launch, but never re-asked in a loop
+  /// within one, and declining never enables anything.
+  bool _declined = false;
+
   // Held locally so dragging stays smooth regardless of poll rate.
   double _interval = 8;
   bool _dragging = false;
@@ -244,81 +249,6 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _refresh();
   }
 
-  /// The prominent disclosure Play requires before the accessibility settings
-  /// are ever opened.
-  ///
-  /// The shape of this dialog is policy, not taste, and Play rejected the app
-  /// over it once already: there must be two buttons -- an affirmative consent
-  /// and a real decline -- and nothing else may count as an answer. The
-  /// barrier does not dismiss, and backing out is treated as declining, never
-  /// as consent. Only the agree button leads anywhere.
-  Future<void> _requestAccessibility(Palette p) async {
-    final agreed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: p.surface,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: Text(
-          'Coast uses Accessibility',
-          style: TextStyle(
-            color: p.text,
-            fontSize: 19,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.3,
-          ),
-        ),
-        content: Text(
-          'Coast uses Android’s Accessibility service to read the screen '
-          'just enough to recognise when a supported video feed is open, and '
-          'to perform the scrolling gesture for you.\n\n'
-          'This means Coast can technically observe the content of your '
-          'screen while the service is on. It only ever reacts to the '
-          'supported feed apps, and it does not collect, store, or share any '
-          'of what it sees — nothing leaves this device.\n\n'
-          'If you agree, Android’s Accessibility settings will open so '
-          'you can turn the service on.',
-          style: TextStyle(color: p.muted, fontSize: 14, height: 1.5),
-        ),
-        actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: Text(
-              'No thanks',
-              style: TextStyle(
-                color: p.muted,
-                fontSize: 15,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(
-              backgroundColor: Palette.accent,
-              foregroundColor: Colors.white,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text(
-              'I agree',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
-    );
-
-    // Anything other than an explicit yes -- decline, back button, the dialog
-    // being torn down -- goes nowhere.
-    if (agreed == true && mounted) {
-      await _channel.invokeMethod('openAccessibilitySettings');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final p = Palette.of(context);
@@ -355,10 +285,17 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
             const SizedBox(height: 32),
 
             if (!s.serviceEnabled)
-              _SetupCard(
-                palette: p,
-                onOpen: () => _requestAccessibility(p),
-              )
+              _declined
+                  ? _DeclinedCard(
+                      palette: p,
+                      onReview: () => setState(() => _declined = false),
+                    )
+                  : _SetupCard(
+                      palette: p,
+                      onAgree: () =>
+                          _channel.invokeMethod('openAccessibilitySettings'),
+                      onDecline: () => setState(() => _declined = true),
+                    )
             else if (!s.serviceBound)
               _StartingCard(palette: p)
             else ...[
@@ -652,10 +589,20 @@ class _SettingsCard extends StatelessWidget {
 }
 
 class _SetupCard extends StatelessWidget {
-  const _SetupCard({required this.palette, required this.onOpen});
+  const _SetupCard({
+    required this.palette,
+    required this.onAgree,
+    required this.onDecline,
+  });
 
   final Palette palette;
-  final VoidCallback onOpen;
+
+  /// Consent is exactly one gesture: tapping I agree. Declining, backing out,
+  /// or navigating away enables nothing -- which is precisely what Play's
+  /// prominent-disclosure policy requires, and the card shows both choices
+  /// before anything at all is tapped.
+  final VoidCallback onAgree;
+  final VoidCallback onDecline;
 
   @override
   Widget build(BuildContext context) {
@@ -666,7 +613,7 @@ class _SetupCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'One-time setup',
+            'Coast uses Accessibility',
             style: TextStyle(
               color: palette.text,
               fontSize: 19,
@@ -676,27 +623,132 @@ class _SetupCard extends StatelessWidget {
           ),
           const SizedBox(height: 10),
           Text(
-            'Coast needs accessibility access to see which feed is open and to '
-            'scroll for you.\n\n'
-            'Everything happens on your device. Nothing is stored or sent '
-            'anywhere.',
+            "To scroll feeds for you, Coast uses Android's Accessibility "
+            'service to:\n'
+            '\u2022  read the screen, only to recognise when a supported '
+            'video feed (TikTok, Reels, Shorts) is open\n'
+            '\u2022  perform the scroll gesture on your behalf\n\n'
+            'While the service is on, Coast could technically observe the '
+            'content of your screen. Coast does not collect, store, or share '
+            'any of it \u2014 nothing leaves this device.\n\n'
+            "If you agree, Android's Accessibility settings will open so you "
+            'can turn Coast on.',
+            style: TextStyle(color: palette.muted, fontSize: 14, height: 1.5),
+          ),
+          const SizedBox(height: 18),
+          Row(
+            children: [
+              Expanded(
+                child: Material(
+                  color: Colors.transparent,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    onTap: onDecline,
+                    borderRadius: BorderRadius.circular(14),
+                    child: Container(
+                      height: 50,
+                      decoration: BoxDecoration(
+                        border: Border.all(color: palette.surfaceAlt, width: 2),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'No thanks',
+                          style: TextStyle(
+                            color: palette.muted,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                flex: 2,
+                child: Material(
+                  color: Palette.accent,
+                  borderRadius: BorderRadius.circular(14),
+                  child: InkWell(
+                    onTap: onAgree,
+                    borderRadius: BorderRadius.circular(14),
+                    child: const SizedBox(
+                      height: 50,
+                      child: Center(
+                        child: Text(
+                          'I agree',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            'Accessibility \u2192 Installed apps \u2192 Coast',
+            style: TextStyle(color: palette.muted, fontSize: 12.5),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shown after a decline. Nothing was enabled, and saying so out loud is what
+/// distinguishes a real choice from a nag loop.
+class _DeclinedCard extends StatelessWidget {
+  const _DeclinedCard({required this.palette, required this.onReview});
+
+  final Palette palette;
+  final VoidCallback onReview;
+
+  @override
+  Widget build(BuildContext context) {
+    return _Panel(
+      palette: palette,
+      padding: const EdgeInsets.all(22),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Setup declined',
+            style: TextStyle(
+              color: palette.text,
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.3,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Text(
+            'Nothing was enabled. Coast cannot scroll feeds without the '
+            'Accessibility service, so the app will wait here.',
             style: TextStyle(color: palette.muted, fontSize: 14, height: 1.5),
           ),
           const SizedBox(height: 18),
           Material(
-            color: Palette.accent,
+            color: palette.surfaceAlt,
             borderRadius: BorderRadius.circular(14),
             child: InkWell(
-              onTap: onOpen,
+              onTap: onReview,
               borderRadius: BorderRadius.circular(14),
-              child: const SizedBox(
+              child: SizedBox(
                 height: 50,
                 width: double.infinity,
                 child: Center(
                   child: Text(
-                    'Continue',
+                    'Review what Coast needs',
                     style: TextStyle(
-                      color: Colors.white,
+                      color: palette.text,
                       fontSize: 15,
                       fontWeight: FontWeight.w600,
                     ),
@@ -704,11 +756,6 @@ class _SetupCard extends StatelessWidget {
                 ),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Accessibility → Installed apps → Coast',
-            style: TextStyle(color: palette.muted, fontSize: 12.5),
           ),
         ],
       ),
