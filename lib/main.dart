@@ -196,6 +196,99 @@ class _HomePageState extends State<HomePage> with WidgetsBindingObserver {
     _poll = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
     _refresh();
     _loadApps();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _discloseOnLaunch());
+  }
+
+  /// The prominent disclosure, first thing on a cold launch while the
+  /// accessibility service is not enabled.
+  ///
+  /// This exists in dialog form -- in addition to the identical disclosure on
+  /// the setup card -- because Play's enforcement of the prominent-disclosure
+  /// policy looks for a consent dialog presented before anything else, and a
+  /// disclosure the reviewer does not find is a disclosure that does not
+  /// exist. Modal, not dismissible by tapping away, two explicit options;
+  /// only Agree marks consent, and consent still only ever leads to Android's
+  /// own settings screen where the user flips the switch themselves.
+  Future<void> _discloseOnLaunch() async {
+    // Give the first status poll a moment: if the service is already on,
+    // there is nothing to disclose or consent to.
+    await Future<void>.delayed(const Duration(milliseconds: 400));
+    if (!mounted || _status.serviceEnabled || _declined) return;
+
+    final p = Palette.of(context);
+    final agreed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          // The back gesture is a decline, never consent.
+          if (!didPop) Navigator.of(ctx).pop(false);
+        },
+        child: AlertDialog(
+          backgroundColor: p.surface,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text(
+            'Coast uses Accessibility',
+            style: TextStyle(
+              color: p.text,
+              fontSize: 19,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.3,
+            ),
+          ),
+          content: Text(
+            "Coast uses Android's AccessibilityService API to read your "
+            'screen content, only to detect when a supported video feed '
+            '(TikTok, Instagram Reels, YouTube Shorts) is open, and to '
+            'perform scroll gestures on your behalf.\n\n'
+            'Coast does not collect, store, or share any personal or '
+            'sensitive data. Screen content is processed only on this device '
+            'and never leaves it.\n\n'
+            "If you agree, Android's Accessibility settings will open so you "
+            'can turn Coast on yourself.',
+            style: TextStyle(color: p.muted, fontSize: 14, height: 1.5),
+          ),
+          actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 14),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(false),
+              child: Text(
+                'No thanks',
+                style: TextStyle(
+                  color: p.muted,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(ctx).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: Palette.accent,
+                foregroundColor: Colors.white,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text(
+                'I agree',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (!mounted) return;
+    if (agreed == true) {
+      await _channel.invokeMethod('openAccessibilitySettings');
+    } else {
+      setState(() => _declined = true);
+    }
   }
 
   @override
